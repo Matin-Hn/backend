@@ -1,11 +1,14 @@
 # app/crud/video.py
-from typing import Optional
-from sqlalchemy import select
+from datetime import datetime, timezone
+from typing import Optional, List, Tuple
+
+from sqlalchemy import select, func, and_, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import joinedload, selectinload
 
-from app.models.video import Video
+from app.models.video import Video, VideoStatus, VideoVisibility
 from app.models.video_public_id import VideoPublicId
+
 
 class CRUDVideo:
     def __init__(self, model=Video):
@@ -49,5 +52,72 @@ class CRUDVideo:
             )
         )
         return result.first() is not None
+
+    @staticmethod
+    def _public_feed_filter(category_id: Optional[int], is_short: Optional[bool]):
+        """
+        Shared WHERE clause for the public listing feed:
+        - not soft-deleted
+        - finished processing (ready)
+        - actually visible: PUBLIC, or SCHEDULED whose time has arrived
+        """
+        now = datetime.now(timezone.utc)
+        visible = or_(
+            Video.visibility == VideoVisibility.PUBLIC,
+            and_(
+                Video.visibility == VideoVisibility.SCHEDULED,
+                Video.scheduled_at.isnot(None),
+                Video.scheduled_at <= now,
+            ),
+        )
+
+        conditions = [
+            Video.deleted_at.is_(None),
+            Video.status == VideoStatus.ready,
+            visible,
+        ]
+        if category_id is not None:
+            conditions.append(Video.category_id == category_id)
+        if is_short is not None:
+            conditions.append(Video.is_short == is_short)
+
+        return and_(*conditions)
+
+    async def get_public_feed(
+        self,
+        db: AsyncSession,
+        skip: int = 0,
+        limit: int = 24,
+        category_id: Optional[int] = None,
+        is_short: Optional[bool] = None,
+    ) -> List[Video]:
+        """Paginated feed of publicly visible, ready videos, newest first."""
+        query = (
+            select(Video)
+            .options(
+                joinedload(Video.channel),
+                joinedload(Video.stats),
+                joinedload(Video.public_id),
+            )
+            .where(self._public_feed_filter(category_id, is_short))
+            .order_by(Video.published_at.desc().nullslast(), Video.created_at.desc())
+            .offset(skip)
+            .limit(limit)
+        )
+        result = await db.execute(query)
+        return list(result.unique().scalars().all())
+
+    async def count_public_feed(
+        self,
+        db: AsyncSession,
+        category_id: Optional[int] = None,
+        is_short: Optional[bool] = None,
+    ) -> int:
+        query = select(func.count(Video.id)).where(
+            self._public_feed_filter(category_id, is_short)
+        )
+        result = await db.execute(query)
+        return result.scalar_one()
+
 
 video = CRUDVideo(Video)

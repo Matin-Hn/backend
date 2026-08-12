@@ -25,7 +25,7 @@ class VideoBase(BaseModel):
     allow_comments: bool = True
     is_made_for_kids: bool = False
     is_short: bool = False
-    
+
     @validator("scheduled_at")
     def validate_scheduled_at(cls, v, values):
         if v and values.get("visibility") != VisibilityEnum.SCHEDULED:
@@ -37,7 +37,7 @@ class VideoBase(BaseModel):
 # Create video request
 class VideoCreate(VideoBase):
     duration_seconds: Optional[int] = Field(None, gt=0, le=43200)  # Max 12 hours
-    
+
     @validator("duration_seconds")
     def validate_duration(cls, v):
         if v and v <= 0:
@@ -55,7 +55,7 @@ class VideoUpdate(BaseModel):
     license: Optional[LicenseEnum] = None
     allow_comments: Optional[bool] = None
     is_made_for_kids: Optional[bool] = None
-    
+
     @validator("scheduled_at")
     def validate_scheduled_at(cls, v, values):
         if v and v <= datetime.utcnow():
@@ -65,6 +65,7 @@ class VideoUpdate(BaseModel):
 # Video response schema
 class VideoResponse(BaseModel):
     id: int
+    public_id: Optional[str] = None
     status: str
     title: str
     description: Optional[str]
@@ -82,9 +83,10 @@ class VideoResponse(BaseModel):
     channel_id: int
     file_url: str
     like_count: int = 0
+    view_count: int = 0  # NEW: needed by the list feed cards
     published_at: Optional[datetime] = None
     updated_at: datetime
-    
+
     class Config:
         from_attributes = True
 
@@ -96,11 +98,11 @@ class VideoDetailResponse(VideoResponse):
     like_count: int = 0
     comment_count: int = 0
     current_user_reaction: Optional[Literal["like", "dislike"]] = None
-    
+
     # Video availability
     is_published: bool
     can_edit: bool = False  # For current user
-    
+
     class Config:
         from_attributes = True
 
