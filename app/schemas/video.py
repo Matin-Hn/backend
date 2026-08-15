@@ -1,5 +1,5 @@
-from pydantic import BaseModel, Field, validator
-from datetime import datetime
+from pydantic import BaseModel, Field, field_validator
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Literal
 from enum import Enum
 
@@ -26,7 +26,7 @@ class VideoBase(BaseModel):
     is_made_for_kids: bool = False
     is_short: bool = False
 
-    @validator("scheduled_at")
+    @field_validator("scheduled_at")
     def validate_scheduled_at(cls, v, values):
         if v and values.get("visibility") != VisibilityEnum.SCHEDULED:
             raise ValueError("scheduled_at only allowed for scheduled videos")
@@ -38,7 +38,7 @@ class VideoBase(BaseModel):
 class VideoCreate(VideoBase):
     duration_seconds: Optional[int] = Field(None, gt=0, le=43200)  # Max 12 hours
 
-    @validator("duration_seconds")
+    @field_validator("duration_seconds")
     def validate_duration(cls, v):
         if v and v <= 0:
             raise ValueError("duration_seconds must be positive")
@@ -56,9 +56,9 @@ class VideoUpdate(BaseModel):
     allow_comments: Optional[bool] = None
     is_made_for_kids: Optional[bool] = None
 
-    @validator("scheduled_at")
+    @field_validator("scheduled_at")
     def validate_scheduled_at(cls, v, values):
-        if v and v <= datetime.utcnow():
+        if v and v <= datetime.now(timezone.utc):
             raise ValueError("scheduled_at must be in the future")
         return v
 
