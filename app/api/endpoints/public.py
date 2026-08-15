@@ -1,14 +1,14 @@
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
 from redis.asyncio import Redis
 
 from app.api.deps import get_db
-from app.schemas.video import VideoDetailResponse, VideoListResponse, VideoResponse
+from app.schemas.video import VideoDetailResponse, VideoListResponse, VideoResponse, VideoUpdate
 from app.models.user import User
 from app.services.auth_service import get_optional_current_user_from_cookie
-from app.services.video_service import get_video_by_public_id
+from app.services.video_service import VideoService, get_video_by_public_id
 from app.services.video_stats_counter import VideoStatsCounter
 from app.crud.video import video as video_crud
 from app.crud.reaction import reaction as reaction_crud
@@ -16,6 +16,8 @@ from app.core.redis import get_redis
 
 router = APIRouter(prefix="/videos")
 
+def get_video_service(db: AsyncSession = Depends(get_db)) -> VideoService:
+    return VideoService(db)
 
 @router.get("", response_model=VideoListResponse)
 async def list_videos(
@@ -23,7 +25,7 @@ async def list_videos(
     page_size: int = Query(24, ge=1, le=50, description="Videos per page"),
     category_id: Optional[int] = Query(None, description="Filter by category"),
     is_short: Optional[bool] = Query(None, description="Filter shorts vs. regular videos"),
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
 ):
     """
@@ -104,7 +106,7 @@ async def list_videos(
 @router.get("/{public_id}", response_model=VideoDetailResponse)
 async def get_video(
     public_id: str,
-    db: Session = Depends(get_db),
+    db: AsyncSession = Depends(get_db),
     redis: Redis = Depends(get_redis),
     current_user: Optional[User] = Depends(get_optional_current_user_from_cookie),
 ):
@@ -161,3 +163,20 @@ async def get_video(
         published_at=video.published_at,
         updated_at=video.updated_at,
     )
+
+
+@router.put("/{public_id}")
+async def update_video(
+    public_id: str,
+    update_form: VideoUpdate,
+    db: AsyncSession = Depends(get_db),
+    video_service: VideoService = Depends(get_video_service),
+    current_user: Optional[User] = Depends(get_optional_current_user_from_cookie),
+):
+    return await video_service.update_video(
+        db,
+        public_id,
+        current_user,
+        update_form
+    )
+    
