@@ -25,20 +25,20 @@ async def create_category(
     Create a new category (Authentication required)
     """
     # Check if category with same name exists
-    if category_crud.exists_by_name(db, category_in.name):
+    if await category_crud.exists_by_name(db, category_in.name):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category with this name already exists"
         )
     
     # Check if slug exists (if provided, else it will be auto-generated)
-    if category_in.slug and category_crud.exists_by_slug(db, category_in.slug):
+    if category_in.slug and await category_crud.exists_by_slug(db, category_in.slug):
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Category with this slug already exists"
         )
     
-    category = category_crud.create(db, category_in)
+    category = await category_crud.create(db, category_in)
     return category
 
 @router.get("/", response_model=CategoryListResponse)
