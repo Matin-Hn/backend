@@ -1,4 +1,3 @@
-# app/crud/video.py
 from datetime import datetime, timezone
 from typing import Optional, List, Tuple
 
@@ -8,6 +7,7 @@ from sqlalchemy.orm import joinedload, selectinload
 
 from app.models.video import Video, VideoStatus, VideoVisibility
 from app.models.video_public_id import VideoPublicId
+from app.schemas.video import VideoUpdate
 
 
 class CRUDVideo:
@@ -26,9 +26,13 @@ class CRUDVideo:
         result = await db.execute(
             select(Video)
             .join(VideoPublicId, VideoPublicId.internal_id == Video.id)
-            .options(joinedload(Video.public_id), joinedload(Video.stats))
+            .options(
+                joinedload(Video.public_id),
+                joinedload(Video.stats),
+                joinedload(Video.channel)
+            )
             .filter(VideoPublicId.public_id == public_id)
-            .filter(Video.deleted_at.is_(None))  # soft-delete guard
+            .filter(Video.deleted_at.is_(None))
         )
         return result.unique().scalar_one_or_none()
 
@@ -119,5 +123,39 @@ class CRUDVideo:
         result = await db.execute(query)
         return result.scalar_one()
 
+    async def put_video(
+        self,
+        db: AsyncSession,
+        video_id: int,          # required to identify the video
+        video: VideoUpdate,
+    ) -> Optional[Video]:
+        """
+        Update an existing video record with the provided fields.
+        Only fields that are explicitly set in `video` will be updated.
+        Returns the updated VideoModel instance or None if not found.
+        """
+        # Fetch the existing video
+        result = await db.execute(
+            select(Video).where(Video.id == video_id)
+        )
+        db_video = result.scalar_one_or_none()
+        if not db_video:
+            return None
+
+        # Get only the fields that were provided in the update
+        update_data = video.model_dump(exclude_unset=True)
+
+        # Apply updates to the model instance
+        for key, value in update_data.items():
+            setattr(db_video, key, value)
+
+        # Update the timestamp (if your model has it)
+        db_video.updated_at = datetime.now(timezone.utc)
+
+        # Commit and refresh to get the latest state
+        await db.commit()
+        await db.refresh(db_video)
+
+        return db_video
 
 video = CRUDVideo(Video)
